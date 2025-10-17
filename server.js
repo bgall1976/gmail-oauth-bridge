@@ -79,9 +79,14 @@ app.get("/oauth2/callback", async (req, res) => {
     }
 
     client.setCredentials(tokens);
-    const oauth2 = google.oauth2({ version: "v2", auth: client });
-    const me = await oauth2.userinfo.get();
-    const email = me.data.email || "unknown@example.com";
+    
+    //const oauth2 = google.oauth2({ version: "v2", auth: client });
+    //const me = await oauth2.userinfo.get();
+    //const email = me.data.email || "unknown@example.com";
+
+    const gmail = google.gmail({ version: "v1", auth: client });
+    const me = await gmail.users.getProfile({ userId: "me" });
+    const email = me.data.emailAddress || "unknown@example.com";
 
     // OPTION A: Create real n8n Credential via Public API
     if (N8N_API_BASE && N8N_API_TOKEN) {
@@ -133,3 +138,4 @@ app.get("/success", (_req, res) => {
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`OAuth bridge running on :${port}`));
+
