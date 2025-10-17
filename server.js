@@ -8,15 +8,17 @@ const {
   GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET,
   BASE_URL,
-  N8N_API_BASE,
-  N8N_API_TOKEN,
-  N8N_WEBHOOK_URL,
+  N8N_WEBHOOK_URL,          // <-- use webhook only
   ALLOWED_REDIRECT,
 } = process.env;
 
-if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !BASE_URL) {
-  console.error("Missing required env vars. Check .env / Render env settings.");
+// For boot: only require the values needed to render and complete OAuth
+if (!BASE_URL || !GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+  console.error("Missing required env vars. Set BASE_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET in Render.");
   process.exit(1);
+}
+if (!N8N_WEBHOOK_URL) {
+  console.warn("NOTE: N8N_WEBHOOK_URL is not set. Tokens will not be forwarded to n8n.");
 }
 
 const app = express();
@@ -52,7 +54,7 @@ function oauthClient() {
   });
 }
 
-app.post("/auth", (req, res) => {
+app.post("/auth", (_req, res) => {
   const client = oauthClient();
   const state = nanoid(24);
   res.cookie("oauth_state", state, { httpOnly: true, sameSite: "lax", secure: true });
@@ -71,58 +73,38 @@ app.get("/oauth2/callback", async (req, res) => {
     const { code, state } = req.query;
     if (!code) throw new Error("Missing code");
     if (state !== req.cookies.oauth_state) throw new Error("Bad state");
+
     const client = oauthClient();
     const { tokens } = await client.getToken(code);
 
     if (!tokens.refresh_token) {
-      return res.status(400).send("We could not get a refresh token. Please try again.");
+      return res.status(400).send("We could not get a refresh token. Please try again or revoke prior consent and retry.");
     }
 
+    // Identify user email using Gmail (works with gmail.readonly)
     client.setCredentials(tokens);
-    
-    //const oauth2 = google.oauth2({ version: "v2", auth: client });
-    //const me = await oauth2.userinfo.get();
-    //const email = me.data.email || "unknown@example.com";
-
     const gmail = google.gmail({ version: "v1", auth: client });
     const me = await gmail.users.getProfile({ userId: "me" });
     const email = me.data.emailAddress || "unknown@example.com";
 
-    // OPTION A: Create real n8n Credential via Public API
-    if (N8N_API_BASE && N8N_API_TOKEN) {
-      const credentialName = `Gmail – ${email}`;
-      const payload = {
-        name: credentialName,
-        type: "googleOAuth2Api",
-        data: {
-          clientId: GOOGLE_CLIENT_ID,
-          clientSecret: GOOGLE_CLIENT_SECRET,
-          oauthTokenData: tokens
-        }
-      };
-
-      const resp = await fetch(`${N8N_API_BASE}/credentials`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${N8N_API_TOKEN}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!resp.ok) {
-        const text = await resp.text();
-        throw new Error(`n8n credential create failed: ${resp.status} ${text}`);
-      }
-    }
-
-    // OPTION B: Post tokens to an n8n webhook you handle
+    // ---- Send tokens to n8n via Webhook ----
     if (N8N_WEBHOOK_URL) {
-      await fetch(N8N_WEBHOOK_URL, {
+      const payload = { email, tokens };
+      const r = await fetch(N8N_WEBHOOK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, tokens })
+        body: JSON.stringify(payload),
       });
+
+      if (!r.ok) {
+        const text = await r.text();
+        console.error("Posting to n8n webhook failed:", r.status, text);
+        // don’t fail the user’s experience—log and continue to success screen
+      } else {
+        console.log("Posted tokens to n8n webhook:", N8N_WEBHOOK_URL);
+      }
+    } else {
+      console.warn("N8N_WEBHOOK_URL not set; tokens were not forwarded to n8n.");
     }
 
     res.redirect(ALLOWED_REDIRECT || `${BASE_URL}/success`);
@@ -138,4 +120,3 @@ app.get("/success", (_req, res) => {
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`OAuth bridge running on :${port}`));
-
