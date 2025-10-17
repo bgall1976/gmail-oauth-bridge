@@ -1,0 +1,17 @@
+{
+  "name": "gmail-oauth-bridge",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.6",
+    "express": "^4.19.2",
+    "googleapis": "^132.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "nanoid": "^5.0.7",
+    "node-fetch": "^3.3.2"
+  }
+}

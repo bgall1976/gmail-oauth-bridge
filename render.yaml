@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: gmail-oauth-bridge
+    env: node
+    plan: free
+    buildCommand: "npm install"
+    startCommand: "npm start"
+    autoDeploy: true
+    runtime: node
+    region: oregon  # or your preferred region
+    envVars:
+      - key: NODE_VERSION
+        value: 18
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: BASE_URL
+        sync: false
+      - key: N8N_API_BASE
+        sync: false
+      - key: N8N_API_TOKEN
+        sync: false
+      - key: N8N_WEBHOOK_URL
+        sync: false
+      - key: ALLOWED_REDIRECT
+        sync: false
